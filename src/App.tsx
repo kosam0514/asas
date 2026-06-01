@@ -5,27 +5,33 @@ import { OUTFITS, POSES, getImageUrl } from './data';
 
 export default function App() {
   const [activeOutfit, setActiveOutfit] = useState(OUTFITS[0]);
-  const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
+  const [selectedPoseId, setSelectedPoseId] = useState<number | null>(null);
+  const [invalidKeys, setInvalidKeys] = useState<Set<string>>(new Set());
+
+  const validPoses = POSES.filter(pose => !invalidKeys.has(`${activeOutfit.id}-${pose.id}`));
+  const selectedIndex = selectedPoseId !== null ? validPoses.findIndex(p => p.id === selectedPoseId) : -1;
 
   // Handle keyboard navigation for the lightbox
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (selectedIndex === null) return;
+      if (selectedPoseId === null) return;
       if (e.key === 'ArrowLeft') handlePrev();
       if (e.key === 'ArrowRight') handleNext();
-      if (e.key === 'Escape') setSelectedIndex(null);
+      if (e.key === 'Escape') setSelectedPoseId(null);
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [selectedIndex]);
+  }, [selectedPoseId, validPoses, selectedIndex]);
 
   const handlePrev = useCallback(() => {
-    setSelectedIndex((prev) => (prev !== null && prev > 0 ? prev - 1 : prev));
-  }, []);
+    if (selectedIndex > 0) setSelectedPoseId(validPoses[selectedIndex - 1].id);
+  }, [selectedIndex, validPoses]);
 
   const handleNext = useCallback(() => {
-    setSelectedIndex((prev) => (prev !== null && prev < POSES.length - 1 ? prev + 1 : prev));
-  }, []);
+    if (selectedIndex !== -1 && selectedIndex < validPoses.length - 1) {
+      setSelectedPoseId(validPoses[selectedIndex + 1].id);
+    }
+  }, [selectedIndex, validPoses]);
 
   return (
     <div className="min-h-screen font-sans pb-20">
@@ -61,23 +67,30 @@ export default function App() {
       {/* Gallery Grid */}
       <main className="max-w-6xl mx-auto px-4 py-8">
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-4 md:gap-6">
-          {POSES.map((pose, index) => (
+          {validPoses.map((pose, index) => (
             <GalleryImage
               key={`${activeOutfit.id}-${pose.id}`}
               outfit={activeOutfit}
               pose={pose}
               index={index}
-              onClick={() => setSelectedIndex(index)}
+              onClick={() => setSelectedPoseId(pose.id)}
+              onError={() => {
+                setInvalidKeys(prev => {
+                  const next = new Set(prev);
+                  next.add(`${activeOutfit.id}-${pose.id}`);
+                  return next;
+                });
+              }}
             />
           ))}
         </div>
       </main>
 
       {/* Lightbox / Modal Modal Viewer */}
-      {selectedIndex !== null && (
+      {selectedPoseId !== null && selectedIndex !== -1 && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center bg-[#faf6f0]/95 backdrop-blur-sm p-4"
-          onClick={() => setSelectedIndex(null)}
+          onClick={() => setSelectedPoseId(null)}
         >
           <div
             className="relative max-w-[90vw] max-h-[90vh] flex flex-col items-center"
@@ -85,25 +98,25 @@ export default function App() {
           >
             <button
               className="absolute -top-12 right-0 text-stone-500 hover:text-rose-500 p-2 transition-colors duration-200"
-              onClick={() => setSelectedIndex(null)}
+              onClick={() => setSelectedPoseId(null)}
             >
               <X className="w-8 h-8" />
             </button>
 
             <div className="relative rounded-lg overflow-hidden bg-white shadow-xl ring-4 ring-rose-100 p-2">
               <img
-                src={getImageUrl(activeOutfit.id, POSES[selectedIndex].id)}
-                alt={POSES[selectedIndex].name}
+                src={getImageUrl(activeOutfit.id, validPoses[selectedIndex].id)}
+                alt={validPoses[selectedIndex].name}
                 className="max-w-full max-h-[75vh] object-contain rounded"
               />
             </div>
 
             <div className="mt-4 text-center">
               <p className="text-rose-700 font-serif text-xl tracking-wide font-medium">
-                {POSES[selectedIndex].name}
+                {validPoses[selectedIndex].name}
               </p>
               <p className="text-stone-400 text-sm mt-1">
-                {selectedIndex + 1} / {POSES.length}
+                {selectedIndex + 1} / {validPoses.length}
               </p>
             </div>
 
@@ -116,7 +129,7 @@ export default function App() {
                 <ChevronLeft className="w-8 h-8" />
               </button>
             )}
-            {selectedIndex < POSES.length - 1 && (
+            {selectedIndex < validPoses.length - 1 && (
               <button
                 className="absolute right-0 md:-right-16 top-1/2 -translate-y-1/2 p-3 text-stone-400 hover:text-rose-500 hover:bg-rose-50 rounded-full transition-all bg-white/50 backdrop-blur"
                 onClick={handleNext}
@@ -132,7 +145,7 @@ export default function App() {
 }
 
 // Individual Gallery Card Component
-const GalleryImage = ({ outfit, pose, index, onClick }: any) => {
+const GalleryImage = ({ outfit, pose, index, onClick, onError }: any) => {
   const [hasError, setHasError] = useState(false);
   const url = getImageUrl(outfit.id, pose.id);
 
@@ -155,7 +168,10 @@ const GalleryImage = ({ outfit, pose, index, onClick }: any) => {
           src={url}
           alt={pose.name}
           loading="lazy"
-          onError={() => setHasError(true)}
+          onError={() => {
+            setHasError(true);
+            if (onError) onError();
+          }}
           className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
         />
       </div>
